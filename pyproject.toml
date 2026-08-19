@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-footprint"
+version = "0.1.0"
+description = "See what AI coding agents are doing to your machine: disk footprint, leftover git worktrees, scratchpads, model caches, running processes — with a local dashboard and a conservative cleaner."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "Jordan Rothstein" }]
+keywords = ["ai", "agents", "diagnostics", "worktree", "cleanup", "claude", "codex", "cursor"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Topic :: System :: Monitoring",
+]
+
+[project.urls]
+Homepage = "https://github.com/jvroth18/agent-footprint"
+Issues = "https://github.com/jvroth18/agent-footprint/issues"
+
+[project.scripts]
+agent-footprint = "agent_footprint.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

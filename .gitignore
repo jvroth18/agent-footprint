@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+*.egg-info/
+dist/
+build/
+.venv/
+# local scan output if run with --data-dir .
+scan.json
+dashboard.html
