@@ -15,6 +15,7 @@ Stdlib only. Never modifies anything (cleanup lives in clean.py).
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
 import time
@@ -22,6 +23,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from . import __version__
+from .privacy import ensure_private_directory, write_private_text
 
 HOME = Path.home()
 CLAUDE_HOME = HOME / ".claude"
@@ -274,20 +276,43 @@ def scan_processes():
         parts = line.split(None, 10)
         if len(parts) < 11:
             continue
-        cmd = parts[10]
-        low = cmd.lower()
-        if not any(k in low for k in AI_PROCESS_KEYWORDS):
+        raw_command = parts[10]
+        low = raw_command.lower()
+        category = next((k for k in AI_PROCESS_KEYWORDS if k in low), None)
+        if category is None:
             continue
         if "grep" in low or int(parts[1]) == my_pid:
             continue
+        try:
+            executable = Path(shlex.split(raw_command)[0]).name
+        except (IndexError, ValueError):
+            executable = "unknown"
         out.append({
             "pid": int(parts[1]),
             "cpu_pct": float(parts[2]),
             "rss_mb": round(int(parts[5]) / 1024),
-            "command": cmd[:160],
+            "executable": executable[:80],
+            "category": category,
         })
     out.sort(key=lambda p: -p["cpu_pct"])
     return out
+
+
+def summarize_cron_line(line):
+    """Return a non-sensitive schedule/category summary for an AI cron entry."""
+    stripped = line.strip()
+    low = stripped.lower()
+    category = next((k for k in AI_SCHEDULER_KEYWORDS if k in low), None)
+    if not stripped or stripped.startswith("#") or category is None:
+        return None
+    fields = stripped.split()
+    if fields[0].startswith("@"):
+        schedule = fields[0]
+    elif len(fields) >= 6:
+        schedule = " ".join(fields[:5])
+    else:
+        return None
+    return f"{schedule} · {category}"
 
 
 # ---------------------------------------------------------------- schedulers
@@ -308,16 +333,15 @@ def scan_schedulers():
             low = line.lower()
             if any(k in low for k in AI_SCHEDULER_KEYWORDS):
                 agents.append({"label": line.strip()[:120], "ai_related": True})
-    cron = [l for l in run(["crontab", "-l"], timeout=10).splitlines()
-            if l.strip() and not l.strip().startswith("#")]
+    cron = [summary for line in run(["crontab", "-l"], timeout=10).splitlines()
+            if (summary := summarize_cron_line(line)) is not None]
     return {"launch_agents": agents, "cron": cron}
 
 
 # ---------------------------------------------------------------- entry point
 
 def scan(roots, data_dir):
-    data_dir = Path(data_dir)
-    data_dir.mkdir(parents=True, exist_ok=True)
+    data_dir = ensure_private_directory(data_dir)
 
     print("Scanning ~/.claude ...", file=sys.stderr)
     claude_home = scan_claude_home()
@@ -360,6 +384,6 @@ def scan(roots, data_dir):
     }
 
     out_path = data_dir / "scan.json"
-    out_path.write_text(json.dumps(doc, indent=1))
+    write_private_text(out_path, json.dumps(doc, indent=1))
     print(f"Wrote {out_path} ({out_path.stat().st_size // 1024} KB)", file=sys.stderr)
     return out_path
