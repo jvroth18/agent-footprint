@@ -4,8 +4,11 @@ The HTML embeds the data — no network, works offline, follows OS light/dark.
 """
 
 import json
+import re
 import sys
 from pathlib import Path
+
+from .privacy import write_private_text
 
 TEMPLATE = r"""<!doctype html>
 <html lang="en">
@@ -263,14 +266,14 @@ $("pads").innerHTML = `<table><tr><th>Project</th><th class="num">Size</th><th c
    <td class="num">${fmtB(p.bytes)}</td><td class="num">${p.age_days!=null?p.age_days.toFixed(1)+"d":"–"}</td>
    <td><span class="badge ${p.stale?"stale":"ok"}">${p.stale?"stale":"active"}</span></td></tr>`).join("") + `</table>`;
 
-/* processes — grouped by command so 70 copies of one binary read as one row */
+/* processes — grouped by safe category/executable labels */
 const groups = {};
 D.processes.forEach(p=>{
-  const key = p.command.replace(/\s+-.*$/,"").slice(0,90);
+  const key = `${p.category} · ${p.executable}`;
   (groups[key] ||= {n:0, cpu:0, mem:0, cmd:key}).n++;
   groups[key].cpu += p.cpu_pct; groups[key].mem += p.rss_mb;
 });
-$("procs").innerHTML = `<table><tr><th class="num">Count</th><th class="num">CPU</th><th class="num">Mem</th><th>Command</th></tr>` +
+$("procs").innerHTML = `<table><tr><th class="num">Count</th><th class="num">CPU</th><th class="num">Mem</th><th>Process</th></tr>` +
   Object.values(groups).sort((a,b)=>b.n-a.n || b.cpu-a.cpu)
   .map(g=>`<tr><td class="num">${g.n}×</td><td class="num">${g.cpu.toFixed(1)}%</td>
    <td class="num">${g.mem} MB</td><td class="mono">${esc(g.cmd)}</td></tr>`).join("") + `</table>`;
@@ -293,14 +296,31 @@ $("ollama").innerHTML = D.model_caches.ollama_models.length
 """
 
 
+SAFE_CRON_SUMMARY = re.compile(r"^(?:@\w+|\S+ \S+ \S+ \S+ \S+) · [a-z0-9-]+$")
+
+
+def sanitize_report_data(data):
+    """Remove command arguments retained by older scan file versions."""
+    for process in data.get("processes", []):
+        process.pop("command", None)
+        process.setdefault("executable", "unknown")
+        process.setdefault("category", "agent")
+    schedulers = data.get("schedulers", {})
+    schedulers["cron"] = [
+        entry for entry in schedulers.get("cron", [])
+        if SAFE_CRON_SUMMARY.fullmatch(entry)
+    ]
+    return data
+
+
 def report(data_dir):
     data_dir = Path(data_dir)
     scan_path = data_dir / "scan.json"
     if not scan_path.exists():
         sys.exit(f"No {scan_path} - run `agent-footprint scan` first.")
-    data = json.loads(scan_path.read_text())
+    data = sanitize_report_data(json.loads(scan_path.read_text()))
     html = TEMPLATE.replace("__DATA__", json.dumps(data).replace("</", "<\\/"))
     out = data_dir / "dashboard.html"
-    out.write_text(html)
+    write_private_text(out, html)
     print(f"Wrote {out}", file=sys.stderr)
     return out

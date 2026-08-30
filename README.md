@@ -29,6 +29,14 @@ agent-footprint clean --apply                # actually do it
 ```
 
 Everything lives in `~/.cache/agent-footprint/` (override with `--data-dir`).
+The data directory is restricted to the current user, and generated files are
+written with owner-only permissions.
+
+> [!CAUTION]
+> `scan.json` and `dashboard.html` contain local diagnostic information such
+> as hostnames, filesystem paths, repository names, and scheduled task labels.
+> Process arguments are not recorded. Do not publish generated files without
+> reviewing them first.
 
 ## What it scans
 
@@ -49,6 +57,7 @@ Targets, dry-run by default:
    drops registrations whose directories are already gone; it never deletes a
    live checkout.
 2. **Stale scratchpads** — per-session temp dirs untouched for more than 7 days.
+   Paths and modification times are revalidated immediately before deletion.
 
 Never touched: model caches, session transcripts, memory files, or any
 worktree directory that still exists on disk. Removing big items — unused
